@@ -21,12 +21,13 @@ messages = load_messages()
 
 layout = [
     [sg.CalendarButton('Choose Date', target='date', key='cal_button'), sg.InputText('', key='date', disabled=True)],
+    [sg.Text("Write message here:")],
     [sg.Multiline(key='message', size=(50, 10))],
     [sg.Button('Save Message'), sg.Button('View Messages')],
     [sg.Button('Quit')]
 ]
 
-window = sg.Window('Calendar with Messages', layout)
+window = sg.Window('Message', layout)
 
 while True:
     event, values = window.read()
@@ -66,13 +67,13 @@ while True:
                     break
                 
                 if event == 'Delete Message':
-                    selected_messages = values['message_list']
-                    if selected_messages:
-                        selected_message = selected_messages[0]
-                        messages[date].remove(selected_message)  # Remove the selected message from the list
-                        sg.popup("Message deleted successfully!")
-                        message_window['message_list'].update(values=messages[date])  # Update the listbox
-                                                
+                     selected_messages = values['message_list']
+                     if selected_messages:
+                         selected_message = selected_messages[0]
+                         messages[date].remove(selected_message)  # Remove the selected message from the list
+                         sg.popup("Message deleted successfully!")
+                         message_window['message_list'].update(values=messages[date])  # Update the listbox
+                                                 
                 
             message_window.close()
 
