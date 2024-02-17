@@ -27,7 +27,7 @@ layout = [
     [sg.Button('Quit')]
 ]
 
-window = sg.Window('Message', layout)
+window = sg.Window('Calendar notes', layout)
 
 while True:
     event, values = window.read()
