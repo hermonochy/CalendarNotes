@@ -43,7 +43,7 @@ check_unchecked_messages(messages, current_date)
 layout = [
     [sg.CalendarButton('Choose Date', target='date', key='cal_button'), sg.InputText('', key='date', disabled=True)],
     [sg.Text("Write message here:")],
-    [sg.Multiline(key='message', size=(50, 10))],
+    [sg.Multiline(key='message', size=(100, 20))],
     [sg.Button('Save Message'), sg.Button('View Messages')],
     [sg.Button('Quit')]
 ]
@@ -75,7 +75,7 @@ while True:
         if date in messages:
             message_window_layout = [
                 [sg.Text(f"Messages for {date}:")],
-                [sg.Listbox(values=messages[date], size=(50, 10), key='message_list')],
+                [sg.Listbox(values=messages[date], size=(100, 20), key='message_list')],
                 [sg.Button('Delete Message')]  
             ]
             
