@@ -1,6 +1,7 @@
 # Calendar Notes
 
 This is a simple note management system built using PySimpleGUI. Users can select a date, write a message associated with that date, save the message, view messages for a specific date, and delete messages if needed.
+![](screenshot.png)
 
 ## Features
 - Users can select a date using the calendar button.
