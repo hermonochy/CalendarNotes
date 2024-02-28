@@ -42,16 +42,13 @@ check_unchecked_messages(messages, current_date)
 
 layout = [
     [sg.Text("Calendar:")],
-    [sg.Frame('', layout=[[sg.CalendarButton('Choose Date', target='date', key='cal_button', visible=False)]], 
-              border_width=0, element_justification='center')],
+    [sg.CalendarButton('Choose Date', target='date', key='date_button')],
     [sg.Text("Write message here:")],
     [sg.Multiline(key='message', size=(100, 20))],
-    [sg.Button('Save Message'), sg.Button('View Messages')],
-    [sg.Button('Quit')]
+    [sg.Button('Save Message'), sg.Button('View Messages'), sg.Button('Quit')]
 ]
 
-window = sg.Window('Calendar notes', layout, finalize=True)
-window['cal_button'].Widget.grid(row=0, column=0)
+window = sg.Window('Calendar notes', layout)
 
 while True:
     event, values = window.read()
@@ -62,7 +59,7 @@ while True:
         break
 
     if event == 'Save Message':
-        date = values['date'].split()[0]
+        date = values['date_button'].split()[0]
         message = values['message'].strip()
 
         if date in messages:
@@ -73,7 +70,7 @@ while True:
         sg.popup("Message saved successfully!", title="Message Saved")
 
     if event == 'View Messages':
-        date = values['date'].split()[0]
+        date = values['date_button'].split()[0]
 
         if date in messages:
             message_window_layout = [
