@@ -52,7 +52,7 @@ layout = [
     [sg.CalendarButton('Choose Date', target='date', key='cal_button'), sg.InputText('', key='date', disabled=True)],
     [sg.Text("Write message here:")],
     [sg.Multiline(key='message', size=(100, 20))],
-    [sg.Button('Save Message'), sg.Button('View Messages'), sg.Button('Save Message for Multiple Dates')],  # Added new button
+    [sg.Button('Save Message'), sg.Button('View Messages'), sg.Button('Save Message for Multiple Dates')],  
     [sg.Button('Quit')]
 ]
 
@@ -108,7 +108,7 @@ while True:
         else:
             sg.popup("No messages saved for this date", title="No Messages Found")
 
-    if event == 'Save Message for Multiple Dates':  # Functionality for the new button
+    if event == 'Save Message for Multiple Dates':  
         message = values['message']
         
         layout = [
