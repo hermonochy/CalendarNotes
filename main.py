@@ -3,6 +3,7 @@ import calendar
 import json
 import os
 import pygame
+from datetime import datetime, timedelta
 
 def load_messages():
     try:
@@ -32,6 +33,13 @@ def check_unchecked_messages(messages, current_date):
                 title="Unchecked Messages"
             )
 
+def save_message_for_dates(message, dates):
+    for date in dates:
+        if date in messages:
+            messages[date].append(message)
+        else:
+            messages[date] = [message]
+
 pygame.init()
 
 messages = load_messages()
@@ -41,11 +49,11 @@ current_date = calendar.datetime.datetime.now().strftime("%Y-%m-%d")
 check_unchecked_messages(messages, current_date)
 
 layout = [
-    [sg.Text("Calendar:")],
-    [sg.CalendarButton('Choose Date', target='date', key='date_button')],
+    [sg.CalendarButton('Choose Date', target='date', key='cal_button'), sg.InputText('', key='date', disabled=True)],
     [sg.Text("Write message here:")],
     [sg.Multiline(key='message', size=(100, 20))],
-    [sg.Button('Save Message'), sg.Button('View Messages'), sg.Button('Quit')]
+    [sg.Button('Save Message'), sg.Button('View Messages'), sg.Button('Save Message for Multiple Dates')],  # Added new button
+    [sg.Button('Quit')]
 ]
 
 window = sg.Window('Calendar notes', layout)
@@ -59,7 +67,7 @@ while True:
         break
 
     if event == 'Save Message':
-        date = values['date_button'].split()[0]
+        date = values['date'].split()[0]  
         message = values['message'].strip()
 
         if date in messages:
@@ -70,23 +78,23 @@ while True:
         sg.popup("Message saved successfully!", title="Message Saved")
 
     if event == 'View Messages':
-        date = values['date_button'].split()[0]
-
+        date = values['date'].split()[0]  
+        
         if date in messages:
             message_window_layout = [
                 [sg.Text(f"Messages for {date}:")],
                 [sg.Listbox(values=messages[date], size=(100, 20), key='message_list')],
-                [sg.Button('Delete Message')]
+                [sg.Button('Delete Message')]  
             ]
-
+            
             message_window = sg.Window('View Messages', message_window_layout)
-
+            
             while True:
                 event, values = message_window.read()
-
+                
                 if event == sg.WIN_CLOSED:
                     break
-
+                
                 if event == 'Delete Message':
                     selected_messages = values['message_list']
                     if selected_messages:
@@ -94,11 +102,51 @@ while True:
                         messages[date].remove(selected_message)
                         sg.popup("Message deleted successfully!", title="Message Deleted")
                         message_window['message_list'].update(values=messages[date])
-
+                                                
             message_window.close()
 
         else:
             sg.popup("No messages saved for this date", title="No Messages Found")
+
+    if event == 'Save Message for Multiple Dates':  # Functionality for the new button
+        message = values['message']
+        
+        layout = [
+            [sg.Text("Select how you want to save the message for multiple dates:")],
+            [sg.Button('Annually'), sg.Button('Weekly'), sg.Button('Working Days (Mon-Fri)'), sg.Button('Daily')]
+        ]
+
+        input_window = sg.Window('Save Message for Multiple Dates', layout)
+
+        while True:
+            input_event, _ = input_window.read()
+
+            if input_event == sg.WIN_CLOSED:
+                break
+
+            if input_event == 'Annually':
+                dates = [current_date.split('-')[0] + '-{0}-{1}'.format(date.split('-')[1], date.split('-')[2]) for date in messages.keys()]
+                save_message_for_dates(message, dates)
+
+            if input_event == 'Weekly':
+                current_date_dt = datetime.strptime(current_date, "%Y-%m-%d")
+                week_dates = [current_date_dt + timedelta(days=i) for i in range(0, 7)]
+                dates = [date.strftime('%Y-%m-%d') for date in week_dates]
+                save_message_for_dates(message, dates)
+
+            if input_event == 'Working Days (Mon-Fri)':
+                current_date_dt = datetime.strptime(current_date, "%Y-%m-%d")
+                weekday_dates = [current_date_dt + timedelta(days=i) for i in range(0, 7)]
+                dates = [date.strftime('%Y-%m-%d') for date in weekday_dates if date.weekday() < 5]
+                save_message_for_dates(message, dates)
+
+            if input_event == 'Daily':
+                current_date_dt = datetime.strptime(current_date, "%Y-%m-%d")
+                dates = [current_date_dt + timedelta(days=i) for i in range(30)]
+                dates = [date.strftime('%Y-%m-%d') for date in dates]
+                save_message_for_dates(message, dates)
+            sg.popup("Message saved for multiple dates successfully!", title="Message Saved for Multiple Dates")
+            input_window.close()
 
 save_messages(messages)
 window.close()
