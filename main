@@ -1,4 +1,5 @@
-import PySimpleGUI as sg
+#!/usr/bin/env python3
+import modules.PySimpleGUI as sg
 import calendar
 import json
 import os
