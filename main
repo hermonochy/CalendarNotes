@@ -5,149 +5,341 @@ import json
 import os
 import pygame
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, List, Optional, Union
+
+class RecurringPattern:
+    ANNUALLY = 'annually'
+    MONTHLY = 'monthly'
+    WEEKLY = 'weekly'
+    WORKDAYS = 'workdays'
+    DAILY = 'daily'
+
+class Message:
+    def __init__(self, 
+                 content, 
+                 created_at,
+                 checked= False,
+                 recurring_type = None,
+                 start_date = None):
+        self.content = content
+        self.created_at = created_at
+        self.checked = checked
+        self.recurring_type = recurring_type
+        self.start_date = start_date
+
+    def to_dict(self):
+        return {
+            'content': self.content,
+            'created_at': self.created_at,
+            'checked': self.checked,
+            'recurring_type': self.recurring_type,
+            'start_date': self.start_date
+        }
+
+    @staticmethod
+    def from_dict(data):
+        return Message(
+            content=data['content'],
+            created_at=data.get('created_at', ''),
+            checked=data.get('checked', False),
+            recurring_type=data.get('recurring_type'),
+            start_date=data.get('start_date')
+        )
+
+def is_message_active_for_date(message, target_date):
+    
+    if not message.recurring_type or not message.start_date:
+        return True  
+    try:
+        start_date = datetime.strptime(message.start_date, "%Y-%m-%d")
+        
+        if start_date.date() > target_date.date():
+            return False
+            
+        if message.recurring_type == RecurringPattern.ANNUALLY:
+            return (start_date.month == target_date.month and 
+                   start_date.day == target_date.day)
+                    
+        elif message.recurring_type == RecurringPattern.MONTHLY:
+            target_month_days = calendar.monthrange(target_date.year, target_date.month)[1]
+            target_day = min(start_date.day, target_month_days)
+            return target_day == target_date.day
+                    
+        elif message.recurring_type == RecurringPattern.WEEKLY:
+            return start_date.weekday() == target_date.weekday()
+                    
+        elif message.recurring_type == RecurringPattern.WORKDAYS:
+            return (target_date.weekday() < 5 and  
+                   target_date.date() >= start_date.date())
+                    
+        elif message.recurring_type == RecurringPattern.DAILY:
+            return target_date.date() >= start_date.date()
+            
+        return False
+            
+    except (ValueError, TypeError) as e:
+        print(f"Date parsing error: {e}")
+        return False
 
 def load_messages():
+    messages_file = Path("savedmessages.json")
     try:
-        with open("savedmessages.json", "r") as file:
-            try:
-                messages = json.load(file)
-            except json.JSONDecodeError:
-                messages = {}
-    except FileNotFoundError:
-        messages = {}
-    return messages
+        if messages_file.exists():
+            with messages_file.open("r") as file:
+                try:
+                    data = json.load(file)
+                    
+                    messages = {}
+                    for date, msg_list in data.items():
+                        messages[date] = [Message.from_dict(msg) if isinstance(msg, dict) 
+                                        else Message(msg, datetime.now().strftime("%Y-%m-%d"))
+                                        for msg in msg_list]
+                    return messages
+                except json.JSONDecodeError:
+                    sg.popup_error("Error reading messages file. Creating new one.", title="File Error")
+                    return {}
+        return {}
+    except PermissionError:
+        sg.popup_error("Permission denied accessing messages file.", title="File Error")
+        return {}
 
 def save_messages(messages):
-    with open("savedmessages.json", "w") as file:
-        json.dump(messages, file)
+    try:
+        
+        data = {date: [msg.to_dict() for msg in msg_list] 
+                for date, msg_list in messages.items()}
+        with open("savedmessages.json", "w") as file:
+            json.dump(data, file, indent=4)
+    except (PermissionError, IOError) as e:
+        sg.popup_error(f"Error saving messages: {str(e)}", title="Save Error")
+
+def get_messages_for_date(messages, target_date):
+    
+    target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+    active_messages = []
+    
+    for date_str, msg_list in messages.items():
+        for msg in msg_list:
+            if is_message_active_for_date(msg, target_dt):
+                active_messages.append(msg)
+                
+    return active_messages
+
+def create_recurring_message(message_tex, 
+                           start_date, 
+                           recurring_type):
+    return Message(
+        content=message_text,
+        created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        checked=False,
+        recurring_type=recurring_type,
+        start_date=start_date
+    )
+
+def create_message_window(date, active_messages):
+    message_display = [
+        f"{'✓ ' if msg.checked else ''}{msg.content}"
+        + (f" (Recurring: {msg.recurring_type})" if msg.recurring_type else "")
+        for msg in active_messages
+    ]
+    
+    layout = [
+        [sg.Text(f"Messages for {date}:")],
+        [sg.Listbox(values=message_display, size=(100, 20), key='message_list', enable_events=True)],
+        [
+            sg.Button('Delete Message'), 
+            sg.Button('Toggle Checked'),
+            sg.Button('Edit Message'),
+            sg.Button('Close')
+        ]
+    ]
+    
+    return sg.Window('View Messages', layout, finalize=True)
+
+def play_notification_sound():
+    sound_file = Path("sound1.mp3")
+    try:
+        if not sound_file.exists():
+            sg.popup_warning("Notification sound file not found", title="Sound Missing")
+            return
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+        pygame.mixer.music.load(str(sound_file))
+        pygame.mixer.music.play()
+    except (pygame.error, FileNotFoundError) as e:
+        sg.popup_error(f"Error playing notification: {str(e)}", title="Sound Error")
 
 def check_unchecked_messages(messages, current_date):
-    if current_date in messages:
-        unchecked_messages = [msg for msg in messages[current_date] if not msg.startswith("√")]
-        if unchecked_messages:
-            file = "sound1.mp3"
-            pygame.mixer.init()
-            pygame.mixer.music.load(file)
-            pygame.mixer.music.play()
-            sg.popup(
-                f"Unchecked Messages for {current_date}:\n" + "\n".join(unchecked_messages),
-                title="Unchecked Messages"
+    active_messages = get_messages_for_date(messages, current_date)
+    unchecked_messages = [msg.content for msg in active_messages if not msg.checked]
+    if unchecked_messages:
+        play_notification_sound()
+        sg.popup(
+            f"Unchecked Messages for {current_date}:\n" + "\n".join(unchecked_messages),
+            title="Unchecked Messages",
+        )
+
+def main():
+    try:
+        pygame.init()
+    except pygame.error:
+        print("Unable to load sound...")
+
+    messages = load_messages()
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    
+    check_unchecked_messages(messages, current_date)
+
+    layout = [
+        [sg.CalendarButton('Choose Date', target='date', key='cal_button'), 
+         sg.InputText('', key='date', disabled=True)],
+        [sg.Text("Write message here:")],
+        [sg.Multiline(key='message', size=(100, 20))],
+        [
+            sg.Button('Save Message'),
+            sg.Button('View Messages'),
+            sg.Button('Save Message for Multiple Dates'),
+            sg.Button('Quit')
+        ]
+    ]
+
+    window = sg.Window('Calendar Notes', layout)
+
+    while True:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, 'Quit'):
+            print("Shutting Down...")
+            save_messages(messages)
+            break
+
+        if event == 'Save Message':
+            if not values['date']:
+                sg.popup_error("Please select a date", title="Input Error")
+                continue
+                
+            date = values['date'].split()[0]
+            message_text = values['message'].strip()
+            
+            if not message_text:
+                sg.popup_error("Please enter a message", title="Input Error")
+                continue
+
+            new_message = Message(
+                content=message_text,
+                created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
 
-def save_message_for_dates(message, dates):
-    for date in dates:
-        if date in messages:
-            messages[date].append(message)
-        else:
-            messages[date] = [message]
+            if date in messages:
+                messages[date].append(new_message)
+            else:
+                messages[date] = [new_message]
 
-pygame.init()
+            window['message'].update('')
+            sg.popup("Message saved successfully!", title="Message Saved")
 
-messages = load_messages()
+        if event == 'View Messages':
+            if not values['date']:
+                sg.popup_error("Please select a date", title="Input Error")
+                continue
+                
+            date = values['date'].split()[0]
+            active_messages = get_messages_for_date(messages, date)
 
-current_date = calendar.datetime.datetime.now().strftime("%Y-%m-%d")
+            if not active_messages:
+                sg.popup("No messages for this date", title="No Messages Found")
+                continue
 
-check_unchecked_messages(messages, current_date)
-
-layout = [
-    [sg.CalendarButton('Choose Date', target='date', key='cal_button'), sg.InputText('', key='date', disabled=True)],
-    [sg.Text("Write message here:")],
-    [sg.Multiline(key='message', size=(100, 20))],
-    [sg.Button('Save Message'), sg.Button('View Messages'), sg.Button('Save Message for Multiple Dates')],  
-    [sg.Button('Quit')]
-]
-
-window = sg.Window('Calendar notes', layout)
-
-while True:
-    event, values = window.read()
-
-    if event == sg.WIN_CLOSED or event == 'Quit':
-        print("Shutting Down...")
-        save_messages(messages)
-        break
-
-    if event == 'Save Message':
-        date = values['date'].split()[0]  
-        message = values['message'].strip()
-
-        if date in messages:
-            messages[date].append(message)
-        else:
-            messages[date] = [message]
-
-        sg.popup("Message saved successfully!", title="Message Saved")
-
-    if event == 'View Messages':
-        date = values['date'].split()[0]  
-        
-        if date in messages:
-            message_window_layout = [
-                [sg.Text(f"Messages for {date}:")],
-                [sg.Listbox(values=messages[date], size=(100, 20), key='message_list')],
-                [sg.Button('Delete Message')]  
-            ]
-            
-            message_window = sg.Window('View Messages', message_window_layout)
+            message_window = create_message_window(date, active_messages)
             
             while True:
-                event, values = message_window.read()
+                msg_event, msg_values = message_window.read()
                 
-                if event == sg.WIN_CLOSED:
+                if msg_event in (sg.WIN_CLOSED, 'Close'):
                     break
                 
-                if event == 'Delete Message':
-                    selected_messages = values['message_list']
-                    if selected_messages:
-                        selected_message = selected_messages[0]
-                        messages[date].remove(selected_message)
-                        sg.popup("Message deleted successfully!", title="Message Deleted")
-                        message_window['message_list'].update(values=messages[date])
-                                                
-            message_window.close()
+                if msg_event == 'Delete Message':
+                    if msg_values['message_list']:
+                        selected_idx = message_window['message_list'].get_indexes()[0]
+                        selected_message = active_messages[selected_idx]
+                        
+                        if sg.popup_yes_no("Are you sure you want to delete this message?",
+                                         "This will delete all occurrences of recurring messages.",
+                                         title="Confirm Deletion") == "Yes":
+                            
+                            for date, msg_list in messages.items():
+                                messages[date] = [msg for msg in msg_list 
+                                               if msg.content != selected_message.content or
+                                                  msg.created_at != selected_message.created_at]
+                                if not messages[date]:
+                                    del messages[date]
+                            
+                            
+                            active_messages = get_messages_for_date(messages, date)
+                            if not active_messages:
+                                message_window.close()
+                                break
+                            message_display = [
+                                f"{'✓ ' if msg.checked else ''}{msg.content}"
+                                + (f" (Recurring: {msg.recurring_type})" if msg.recurring_type else "")
+                                for msg in active_messages
+                            ]
+                            message_window['message_list'].update(values=message_display)
 
-        else:
-            sg.popup("No messages saved for this date", title="No Messages Found")
+        if event == 'Save Message for Multiple Dates':
+            if not values['date']:
+                sg.popup_error("Please select a start date", title="Input Error")
+                continue
+                
+            message_text = values['message'].strip()
+            if not message_text:
+                sg.popup_error("Please enter a message", title="Input Error")
+                continue
 
-    if event == 'Save Message for Multiple Dates':  
-        message = values['message']
-        
-        layout = [
-            [sg.Text("Select how you want to save the message for multiple dates:")],
-            [sg.Button('Annually'), sg.Button('Weekly'), sg.Button('Working Days (Mon-Fri)'), sg.Button('Daily')]
-        ]
+            layout = [
+                [sg.Text("Select occurence pattern:")],
+                [
+                    sg.Button('Annually'),
+                    sg.Button('Monthly'),
+                    sg.Button('Weekly'),
+                    sg.Button('Working Days'),
+                    sg.Button('Daily'),
+                    sg.Button('Cancel')
+                ]
+            ]
 
-        input_window = sg.Window('Save Message for Multiple Dates', layout)
+            input_window = sg.Window('Save Message for Multiple Dates', layout)
+            
+            while True:
+                input_event, _ = input_window.read()
+                
+                if input_event in (sg.WIN_CLOSED, 'Cancel'):
+                    break
 
-        while True:
-            input_event, _ = input_window.read()
+                if input_event in ('Annually', 'Monthly', 'Weekly', 'Working Days', 'Daily'):
+                    start_date = values['date'].split()[0]
+                    recurring_type = input_event.lower().replace(' ', '')
+                    
+                    new_message = create_recurring_message(
+                        message_text,
+                        start_date,
+                        recurring_type
+                    )
+                    
+                    if start_date in messages:
+                        messages[start_date].append(new_message)
+                    else:
+                        messages[start_date] = [new_message]
+                        
+                    window['message'].update('')
+                    sg.popup("Recurring message saved successfully!", 
+                           title="Message Saved")
+                    break
 
-            if input_event == sg.WIN_CLOSED:
-                break
-
-            if input_event == 'Annually':
-                dates = [current_date.split('-')[0] + '-{0}-{1}'.format(date.split('-')[1], date.split('-')[2]) for date in messages.keys()]
-                save_message_for_dates(message, dates)
-
-            if input_event == 'Weekly':
-                current_date_dt = datetime.strptime(current_date, "%Y-%m-%d")
-                week_dates = [current_date_dt + timedelta(days=i) for i in range(0, 7)]
-                dates = [date.strftime('%Y-%m-%d') for date in week_dates]
-                save_message_for_dates(message, dates)
-
-            if input_event == 'Working Days (Mon-Fri)':
-                current_date_dt = datetime.strptime(current_date, "%Y-%m-%d")
-                weekday_dates = [current_date_dt + timedelta(days=i) for i in range(0, 7)]
-                dates = [date.strftime('%Y-%m-%d') for date in weekday_dates if date.weekday() < 5]
-                save_message_for_dates(message, dates)
-
-            if input_event == 'Daily':
-                current_date_dt = datetime.strptime(current_date, "%Y-%m-%d")
-                dates = [current_date_dt + timedelta(days=i) for i in range(30)]
-                dates = [date.strftime('%Y-%m-%d') for date in dates]
-                save_message_for_dates(message, dates)
-            sg.popup("Message saved for multiple dates successfully!", title="Message Saved for Multiple Dates")
             input_window.close()
 
-save_messages(messages)
-window.close()
+    window.close()
+
+if __name__ == "__main__":
+    main()
